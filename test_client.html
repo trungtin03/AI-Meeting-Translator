@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live AI Translator - Smart Learning UI</title>
+    <style>
+        /* Setup form cơ bản */
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #121212;
+            color: #ffffff;
+            padding: 20px;
+            max-width: 1400px;
+            margin: auto;
+        }
+
+        h2 {
+            color: #00d2d3;
+            text-align: center;
+            margin-bottom: 10px;
+        }
+
+        #controls {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 10px;
+            flex-wrap: wrap;
+        }
+
+        button {
+            padding: 10px 20px;
+            font-size: 15px;
+            font-weight: bold;
+            cursor: pointer;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            transition: 0.3s;
+        }
+
+        #btnStart {
+            background: #ff6b6b;
+        }
+
+        #btnStart.recording {
+            background: #1dd1a1;
+            color: #000;
+        }
+
+        #btnExport {
+            background: #5f27cd;
+            display: none;
+        }
+
+        #btnExport:hover {
+            background: #341f97;
+        }
+
+        #status {
+            text-align: center;
+            color: #888;
+            font-size: 14px;
+            width: 100%;
+            margin-bottom: 15px;
+        }
+
+        /* KHUNG BẢNG CHÍNH */
+        .board-container {
+            border: 2px solid #333;
+            border-radius: 8px;
+            background: #1a1a1a;
+            display: flex;
+            flex-direction: column;
+            height: 70vh;
+            /* Tăng chiều cao lên tí cho dễ đọc */
+            min-height: 400px;
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.6);
+            resize: vertical;
+            overflow: hidden;
+        }
+
+        /* Thanh Tiêu đề 2 cột */
+        .board-header {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            background: #2f3640;
+            border-bottom: 2px solid #000;
+        }
+
+        .board-header div {
+            padding: 15px;
+            text-align: center;
+            font-weight: bold;
+            font-size: 18px;
+            text-transform: uppercase;
+        }
+
+        .board-header .en-title {
+            border-right: 2px solid #000;
+            color: #c8d6e5;
+        }
+
+        .board-header .vi-title {
+            color: #1dd1a1;
+        }
+
+        /* KHU VỰC HIỂN THỊ ĐOẠN VĂN */
+        .board-body {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            flex-grow: 1;
+            overflow: hidden;
+        }
+
+        /* Từng khung văn bản (Anh / Việt) */
+        .text-pane {
+            padding: 25px;
+            /* Tăng padding nhìn cho sang */
+            font-size: 19px;
+            /* Tăng cỡ chữ lên tí cho dễ học */
+            line-height: 1.9;
+            /* Tăng khoảng cách dòng */
+            overflow-y: auto;
+            text-align: justify;
+        }
+
+        #enText {
+            border-right: 2px solid #333;
+            color: #c8d6e5;
+        }
+
+        #viText {
+            color: #1dd1a1;
+        }
+
+        /* --- MỚI: CSS CHO CHỨC NĂNG HỌC TẬP (HOVER) --- */
+
+        /* Style mặc định cho các câu/cụm từ có thể đối chiếu */
+        .align-phrase {
+            transition: background-color 0.2s, color 0.2s;
+            border-radius: 3px;
+            cursor: pointer;
+            /* Biến chuột thành hình bàn tay */
+            padding: 2px 0;
+            /* Thêm tí padding dọc để vệt highlight đẹp hơn */
+        }
+
+        /* Khi di chuột vào: Sáng lên ở CẢ 2 BÊN */
+        .highlight-linked {
+            background-color: rgba(29, 209, 161, 0.3);
+            /* Màu xanh nhạt trong suốt */
+            color: #ffffff !important;
+            /* Ép màu chữ trắng cho nổi */
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .board-body {
+                grid-template-columns: 1fr;
+                grid-template-rows: 1fr 1fr;
+            }
+
+            #enText {
+                border-right: none;
+                border-bottom: 2px solid #333;
+            }
+
+            .board-header {
+                display: none;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <h2>🎙️ AI Paragraph Translator - Smart Learning</h2>
+
+    <div id="controls">
+        <button id="btnStart">🔴 Bắt đầu thu âm</button>
+        <button id="btnExport">💾 Xuất TXT</button>
+        <div id="status">Sẵn sàng kết nối...</div>
+    </div>
+
+    <div class="board-container">
+        <div class="board-header">
+            <div class="en-title">English Script</div>
+            <div class="vi-title">Bản dịch tiếng Việt</div>
+        </div>
+        <div class="board-body">
+            <div class="text-pane" id="enText"></div>
+            <div class="text-pane" id="viText"></div>
+        </div>
+    </div>
+
+    <script>
+        let ws;
+        let audioContext;
+        let processor;
+
+        // Biến lưu trữ đoạn văn dạng Raw (để xuất file)
+        let rawEnglishText = "";
+        let rawVietnameseText = "";
+
+        // Biến đếm để đặt ID duy nhất cho từng cặp câu
+        let phraseCounter = 0;
+
+        const btnStart = document.getElementById('btnStart');
+        const btnExport = document.getElementById('btnExport');
+        const enDiv = document.getElementById('enText');
+        const viDiv = document.getElementById('viText');
+        const statusDiv = document.getElementById('status');
+
+        btnExport.onclick = () => {
+            const finalDoc = `--- ENGLISH ---\n${rawEnglishText}\n\n--- VIETNAMESE ---\n${rawVietnameseText}`;
+            const blob = new Blob([finalDoc], { type: 'text/plain;charset=utf-8' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `Meeting_Learn_${new Date().toLocaleDateString('vi-VN').replace(/\//g, '-')}.txt`;
+            a.click();
+        };
+
+        btnStart.onclick = async () => {
+            if (btnStart.innerText.includes("Bắt đầu")) startRecording();
+            else stopRecording();
+        };
+
+        // MỚI: Hàm xử lý logic di chuột gối đầu
+        function addLearningHoverLogic(phraseId) {
+            // Tìm 2 cái cụm từ (EN và VI) có cùng PhraseId
+            const counterparts = document.querySelectorAll(`[data-phrase-id="${phraseId}"]`);
+
+            counterparts.forEach(el => {
+                // Khi chuột bay vào
+                el.addEventListener('mouseover', () => {
+                    counterparts.forEach(c => c.classList.add('highlight-linked'));
+                });
+                // Khi chuột bay ra
+                el.addEventListener('mouseout', () => {
+                    counterparts.forEach(c => c.classList.remove('highlight-linked'));
+                });
+            });
+        }
+
+        async function startRecording() {
+            try {
+                statusDiv.innerText = "⏳ Đang kết nối...";
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+                // ⚠️ THAY IP WSL CỦA MÀY VÀO ĐÂY
+                ws = new WebSocket(`ws://${window.location.host}/meeting`);
+
+                ws.onopen = () => {
+                    statusDiv.innerText = "🟢 Đang dịch. Di chuột vào đoạn văn để đối chiếu song ngữ.";
+                    statusDiv.style.color = "#1dd1a1";
+                    btnStart.innerText = "⏹️ Dừng thu âm";
+                    btnStart.classList.add("recording");
+                };
+
+                ws.onclose = () => {
+                    statusDiv.innerText = "🔴 Đã dừng.";
+                    statusDiv.style.color = "#ff6b6b";
+                    stopRecording();
+                };
+
+                ws.onmessage = (e) => {
+                    const data = JSON.parse(e.data);
+                    btnExport.style.display = "block";
+
+                    // Lưu raw để xuất file
+                    rawEnglishText += (rawEnglishText ? " " : "") + data.original;
+                    rawVietnameseText += (rawVietnameseText ? " " : "") + data.translated;
+
+                    // Lấy ID duy nhất cho cặp câu này
+                    const currentId = phraseCounter++;
+
+                    // 1. Gói câu tiếng Anh vào tag SPAN với data-id
+                    const enSpan = document.createElement('span');
+                    enSpan.className = 'align-phrase';
+                    enSpan.setAttribute('data-phrase-id', currentId);
+                    enSpan.innerText = (rawEnglishText.split(' ').length > data.original.split(' ').length ? " " : "") + data.original;
+
+                    // 2. Gói câu tiếng Việt tương ứng
+                    const viSpan = document.createElement('span');
+                    viSpan.className = 'align-phrase';
+                    viSpan.setAttribute('data-phrase-id', currentId);
+                    viSpan.innerText = (rawVietnameseText.split(' ').length > data.translated.split(' ').length ? " " : "") + data.translated;
+
+                    // 3. Nhét vào giao diện
+                    enDiv.appendChild(enSpan);
+                    viDiv.appendChild(viSpan);
+
+                    // 4. MỚI: Nhúng logic hover ngay lập tức cho 2 cái SPAN vừa tạo
+                    addLearningHoverLogic(currentId);
+
+                    enDiv.scrollTop = enDiv.scrollHeight;
+                    viDiv.scrollTop = viDiv.scrollHeight;
+                };
+
+                audioContext = new AudioContext({ sampleRate: 16000 });
+                const source = audioContext.createMediaStreamSource(stream);
+                processor = audioContext.createScriptProcessor(512, 1, 1);
+                source.connect(processor);
+                processor.connect(audioContext.destination);
+
+                processor.onaudioprocess = (e) => {
+                    if (ws && ws.readyState === WebSocket.OPEN) {
+                        const input = e.inputBuffer.getChannelData(0);
+                        const pcm16 = new Int16Array(input.length);
+                        for (let i = 0; i < input.length; i++) {
+                            pcm16[i] = Math.max(-1, Math.min(1, input[i])) * 32767;
+                        }
+                        ws.send(pcm16.buffer);
+                    }
+                };
+
+            } catch (err) {
+                console.error("Lỗi:", err);
+                alert("Hãy cấp quyền Micro!");
+                stopRecording();
+            }
+        }
+
+        function stopRecording() {
+            if (ws) ws.close();
+            if (audioContext) audioContext.close();
+            btnStart.innerText = "🔴 Bắt đầu thu âm";
+            btnStart.classList.remove("recording");
+        }
+    </script>
+</body>
+
+</html>

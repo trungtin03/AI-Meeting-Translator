@@ -1,12 +1,19 @@
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from src.engine import TranslationEngine
 from src.audio_utils import VADAudioBuffer
+from fastapi.responses import HTMLResponse
 import numpy as np
 
 app = FastAPI()
 engine = TranslationEngine()
 vad_buffer = VADAudioBuffer(sample_rate=16000)
 
+@app.get("/")
+async def get_web_interface():
+    # Nhớ đảm bảo file test_client.html nằm cùng thư mục gốc với thư mục src
+    with open("test_client.html", "r", encoding="utf-8") as f:
+        html_content = f.read()
+    return HTMLResponse(content=html_content)
 @app.websocket("/meeting")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
